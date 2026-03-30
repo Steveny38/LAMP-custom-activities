@@ -22,12 +22,13 @@ import {
   Fab,
   CircularProgress,
   Link,
-  Tooltip,
+  TextField,
 } from "@material-ui/core";
 import Lotus from "./Lotus";
 import { useTranslation } from "react-i18next";
 import ThumbUpAltOutlinedIcon from "@material-ui/icons/ThumbUpAltOutlined";
 import ThumbDownAltOutlinedIcon from "@material-ui/icons/ThumbDownAltOutlined";
+
 const BorderLinearProgress = withStyles((theme: Theme) =>
   createStyles({
     root: {
@@ -80,7 +81,7 @@ const useStyles = makeStyles((theme) => ({
   inhale_exhale: { position: "relative", height: 50 },
   InhaleContainer: {
     display: "block",
-    animation: "$InhaleText 10s ease infinite",
+    animation: "$InhaleText ease infinite",
     fontSize: 30,
     fontWeight: "bold",
     textAlign: "center",
@@ -92,7 +93,7 @@ const useStyles = makeStyles((theme) => ({
   ExhaleContainer: {
     display: "block",
     marginTop: "-2rem",
-    animation: "$ExhaleText 10s ease infinite",
+    animation: "$ExhaleText ease infinite",
     fontSize: 30,
     fontWeight: "bold",
     textAlign: "center",
@@ -123,7 +124,7 @@ const useStyles = makeStyles((theme) => ({
     padding: "15px 25px 15px 25px",
     borderRadius: "40px",
     minWidth: "200px",
-    boxShadow: " 0px 10px 15px rgba(255, 172, 152, 0.25)",
+    boxShadow: "0px 10px 15px rgba(255, 172, 152, 0.25)",
     lineHeight: "22px",
     display: "inline-block",
     textTransform: "capitalize",
@@ -139,7 +140,6 @@ const useStyles = makeStyles((theme) => ({
       textDecoration: "none",
     },
   },
-
   breatheReview: {
     "& h4": { fontSize: 25, fontWeight: 600, marginBottom: 25, marginTop: -50 },
     "& p": { fontStyle: "italic", color: "rgba(0, 0, 0, 0.5)", margin: 15 },
@@ -147,7 +147,6 @@ const useStyles = makeStyles((theme) => ({
   progress: {
     color: "#E46759",
   },
-
   videoNav: {
     marginBottom: 30,
     "& video": {
@@ -203,7 +202,6 @@ export default function Breathe({ ...props }) {
   const [tab, setTab] = useState(0);
   const [status, setStatus] = useState("Yes");
   const [progress, setProgress] = React.useState(100);
-  const [progressLabel, setProgressLabel] = React.useState(4);
   const [isLoading, setIsLoading] = useState(false);
   const [inhale, setInhale] = useState(true);
   const [playMusic, setPlayMusic] = useState(true);
@@ -213,9 +211,60 @@ export default function Breathe({ ...props }) {
   const [settings, setSettings] = useState(null);
   const [forward, setForward] = useState(props?.data?.forward);
   const [isForwardButton, setIsForwardButton] = useState(false);
+  const [breathDuration, setBreathDuration] = useState(null);
+  const [customDuration, setCustomDuration] = useState("");
+  const [progressLabel, setProgressLabel] = useState(0);
+
+  const resolvedDuration =
+    breathDuration === "custom" ? Number(customDuration) : Number(breathDuration);
+
+  const resolvedDurationRef = React.useRef(resolvedDuration);
+  useEffect(() => {
+    resolvedDurationRef.current = resolvedDuration;
+  }, [resolvedDuration]);
+
+  const timerRef = React.useRef(null);
+const cycleRef = React.useRef({ label: 0, isInhale: true, duration: 0 });
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+const startTimer = () => {
+  if (timerRef.current) clearInterval(timerRef.current);
+
+  const duration = resolvedDurationRef.current;
+
+  cycleRef.current = { label: duration, isInhale: true, duration };
+
+  setProgressLabel(duration);
+  setProgress(100);
+  setInhale(true);
+
+  timerRef.current = setInterval(() => {
+    const c = cycleRef.current;
+    const nextLabel = c.label - 1;
+
+    if (nextLabel < 1) {
+      cycleRef.current = { label: c.duration, isInhale: !c.isInhale, duration: c.duration };
+      setProgressLabel(c.duration);
+      setProgress(100);
+      setInhale(!c.isInhale);
+    } else {
+      cycleRef.current = { ...c, label: nextLabel };
+      setProgressLabel(nextLabel);
+      setProgress(Math.round((nextLabel / c.duration) * 100));
+      setInhale(c.isInhale);
+    }
+  }, 1000);
+};
   const tabDirection = (currentTab: number) => {
     return supportsSidebar ? "up" : "left";
   };
+
   const handleNext = () => {
     setTab(tab + 1);
     setIsLoading(true);
@@ -229,32 +278,21 @@ export default function Breathe({ ...props }) {
 
   const videoLoaded = () => {
     setIsLoading(false);
-    setStarted(!started);
+    setStarted(true);
     setTime(new Date().getTime());
-    setProgressUpdate();
-  };
-
-  const setProgressUpdate = () => {
-    const val = progressLabel - 1;
-    if (val === -1) {
-      setProgressLabel(4);
-      setProgress(100);
-      setInhale(!inhale);
-    } else {
-      setProgressLabel(val);
-    }
+    startTimer();
   };
 
   useEffect(() => {
     const settingsData =
       props.data.activity?.settings ?? props.data.settings ?? {};
     const configuration = props.data.configuration;
-    const langugae = configuration
+    const language = configuration
       ? configuration.hasOwnProperty("language")
         ? configuration.language
         : "en-US"
       : "en-US";
-    i18n.changeLanguage(langugae);
+    i18n.changeLanguage(language);
     setSettings(settingsData);
     if (
       (!!settingsData &&
@@ -262,18 +300,13 @@ export default function Breathe({ ...props }) {
         (settingsData?.audio_url || "").trim() !== "") ||
       !!settingsData?.audio
     ) {
-      setAudio(new Audio(settingsData?.audio_url ?? settingsData?.audio ?? ""));
+      setAudio(
+        new Audio(settingsData?.audio_url ?? settingsData?.audio ?? "")
+      );
     }
   }, []);
 
-  useEffect(() => {
-    if (started) {
-      setTimeout(setProgressUpdate, 1000);
-      const val = progress - 25 >= 0 ? progress - 25 : 100;
-      setProgress(val < 0 ? 0 : val);
-    }
-  }, [progressLabel]);
-
+  // overall progress bar driven by audio duration or fallback
   useEffect(() => {
     if (started) {
       if (progressValue < 100) {
@@ -284,12 +317,18 @@ export default function Breathe({ ...props }) {
             : 0.8);
         setProgressValue(val > 100 ? 100 : val);
       } else {
-        setStarted(!started);
+        stopTimer();
+        setStarted(false);
         setPlayMusic(false);
         handleNext();
       }
     }
   }, [progress]);
+
+  // cleanup on unmount
+  useEffect(() => {
+    return () => stopTimer();
+  }, []);
 
   const handleClickStatus = (statusVal: string) => {
     setStatus(statusVal);
@@ -301,9 +340,7 @@ export default function Breathe({ ...props }) {
         ? JSON.stringify({
             timestamp: time,
             duration: new Date().getTime() - time,
-            static_data: {
-              sentiment: status,
-            },
+            static_data: { sentiment: status },
             temporal_slices: [],
             ...(forward && { forward: isForwardButton }),
             done: true,
@@ -311,36 +348,38 @@ export default function Breathe({ ...props }) {
         : JSON.stringify({
             timestamp: time,
             duration: new Date().getTime() - time,
-            temporal_slices: [],            
+            temporal_slices: [],
             ...(forward && { forward: isForwardButton }),
           }),
       "*"
     );
   };
-  
+
   const handleForwardClick = () => {
     parent.postMessage(
       JSON.stringify({
         timestamp: time,
         duration: new Date().getTime() - time,
-        temporal_slices: [],        
+        temporal_slices: [],
         forward: true,
       }),
       "*"
     );
   };
+
   const handleBackClick = () => {
     parent.postMessage(
       JSON.stringify({
         timestamp: time,
         duration: new Date().getTime() - time,
-        temporal_slices: [],        
+        temporal_slices: [],
         forward: false,
         clickBack: true,
       }),
       "*"
     );
   };
+
   return (
     <div className={classes.root}>
       <AppBar
@@ -351,9 +390,7 @@ export default function Breathe({ ...props }) {
           <IconButton
             onClick={() => {
               setPlayMusic(false);
-              if (!!audio) {
-                audio.pause();
-              }
+              if (!!audio) audio.pause();
               setAudio(null);
               setIsForwardButton(false);
               handleBackClick();
@@ -363,9 +400,7 @@ export default function Breathe({ ...props }) {
           >
             <Icon>arrow_back</Icon>
           </IconButton>
-          <Typography variant="h5">
-            {t("Breathe")}{" "}            
-          </Typography>
+          <Typography variant="h5">{t("Breathe")}</Typography>
           {forward && (
             <IconButton onClick={handleForwardClick}>
               <Icon>arrow_forward</Icon>
@@ -375,51 +410,81 @@ export default function Breathe({ ...props }) {
         <BorderLinearProgress variant="determinate" value={progressValue} />
       </AppBar>
       <Container>
+        {/* TAB 0 - Duration selection + Start */}
         <Slide
           in={tab === 0}
           direction={tabDirection(0)}
           mountOnEnter
           unmountOnExit
         >
-          <Box>
-            <Box textAlign="center">
-              {supportsSidebar && (
-                <Box pt={4}>
-                  <Typography variant="h6">{t("Prepare yourself")}</Typography>
-                  <Box textAlign="center" px={4} pt={2}>
-                    <Typography variant="body2" component="p">
-                      {t(
-                        "Get yourself comfortable and when you’re ready tap the start button."
-                      )}
-                    </Typography>
-                    {/* <img src={Lotus} className={classes.flower}/> */}
-                    {/* <Box className={classes.flower + " " + lotus} /> */}
-                    <Lotus />
-                  </Box>
-                </Box>
-              )}
-              {!supportsSidebar && (
-                <Box>
-                  <Lotus />
-                  <Typography variant="h6">{t("Get ready")}</Typography>
-                  <Box textAlign="center" px={4} pt={2} pb={5}>
-                    <Typography variant="body2" component="p">
-                      {t(
-                        "Get yourself comfortable and when you’re ready tap the start button."
-                      )}
-                    </Typography>
-                  </Box>
-                </Box>
-              )}
+          <Box textAlign="center" mt={4}>
+            <Lotus />
+            <Typography variant="h6">{t("Get ready")}</Typography>
+            <Box textAlign="center" px={4} pt={2} pb={3}>
+              <Typography variant="body2" component="p">
+                {t(
+                  "Get yourself comfortable and when you're ready tap the start button."
+                )}
+              </Typography>
+            </Box>
 
-              <Box textAlign="center" mt={1}>
-                <Fab className={classes.btnpeach} onClick={handleNext}>
-                  {t("Start")}
+            {/* Duration selector */}
+            <Typography variant="body2" style={{ marginBottom: 8 }}>
+              {t("Select breath duration")}
+            </Typography>
+            <Box mt={1} mb={2}>
+              {[3, 4, 5, "custom"].map((val) => (
+                <Fab
+                  key={val}
+                  size="small"
+                  onClick={() => {
+                    setBreathDuration(val);
+                    setCustomDuration("");
+                  }}
+                  style={{
+                    margin: "0 4px",
+                    background: breathDuration === val ? "#FFAC98" : undefined,
+                    flexShrink: 0,
+                    minWidth: val === "custom" ? 80 : undefined,
+                  }}
+                >
+                  {val === "custom" ? t("Custom") : `${val}s`}
                 </Fab>
+              ))}
+            </Box>
+
+            {/* Custom duration input */}
+            {breathDuration === "custom" && (
+              <Box mb={2}>
+                <TextField
+                  type="number"
+                  label={t("Seconds")}
+                  inputProps={{ min: 1, max: 60 }}
+                  value={customDuration}
+                  onChange={(e) => setCustomDuration(e.target.value)}
+                  variant="outlined"
+                  size="small"
+                />
               </Box>
+            )}
+
+            {/* Start button */}
+            <Box mt={2}>
+              <Fab
+                className={classes.btnpeach}
+                onClick={handleNext}
+                disabled={
+                  !breathDuration ||
+                  (breathDuration === "custom" && !customDuration)
+                }
+              >
+                {t("Start")}
+              </Fab>
             </Box>
           </Box>
         </Slide>
+
+        {/* TAB 1 - Breathing exercise */}
         <Slide
           in={tab === 1}
           direction={tabDirection(1)}
@@ -445,23 +510,23 @@ export default function Breathe({ ...props }) {
               <video
                 src="https://github.com/BIDMCDigitalPsychiatry/LAMP-activities/raw/refs/heads/dist/misc/Lotus.mp4"
                 autoPlay={true}
-                onLoadedData={() => {
-                  videoLoaded();
-                }}
+                onLoadedData={videoLoaded}
                 loop
-                preload={"metadata"}
+                preload="metadata"
               />
               {started && (
                 <Box className={classes.inhale_exhale}>
                   <Typography
                     variant="overline"
                     className={classes.ExhaleContainer}
+                    style={{ animationDuration: `${resolvedDuration * 2}s` }}
                   >
                     {t("Exhale")}
                   </Typography>
                   <Typography
                     variant="overline"
                     className={classes.InhaleContainer}
+                    style={{ animationDuration: `${resolvedDuration * 2}s` }}
                   >
                     {t("Inhale")}
                   </Typography>
@@ -470,40 +535,25 @@ export default function Breathe({ ...props }) {
             </Grid>
             {started && (
               <Box style={{ width: "100px", height: "100px" }}>
-                {inhale && (
-                  <CircularProgressbar
-                    value={progress}
-                    text={`${progressLabel}`}
-                    strokeWidth={8}
-                    styles={buildStyles({
-                      strokeLinecap: "butt",
-                      pathColor: "#E46759",
-                      textColor: "#BC453D",
-                      trailColor: "#FFAC98",
-                      textSize: "45px",
-                      pathTransitionDuration: 1,
-                    })}
-                  />
-                )}
-                {!inhale && (
-                  <CircularProgressbar
-                    value={progress}
-                    text={`${progressLabel}`}
-                    strokeWidth={8}
-                    styles={buildStyles({
-                      strokeLinecap: "butt",
-                      pathColor: "#E46759",
-                      textColor: "#BC453D",
-                      trailColor: "#FFAC98",
-                      textSize: "45px",
-                      pathTransitionDuration: 1,
-                    })}
-                  />
-                )}
+                <CircularProgressbar
+                  value={progress}
+                  text={`${progressLabel}`}
+                  strokeWidth={8}
+                  styles={buildStyles({
+                    strokeLinecap: "butt",
+                    pathColor: "#E46759",
+                    textColor: "#BC453D",
+                    trailColor: "#FFAC98",
+                    textSize: "45px",
+                    pathTransitionDuration: 1,
+                  })}
+                />
               </Box>
             )}
           </Grid>
         </Slide>
+
+        {/* TAB 2 - Completion screen */}
         <Slide
           in={tab === 2}
           direction={tabDirection(2)}
